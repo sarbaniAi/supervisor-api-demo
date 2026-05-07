@@ -186,86 +186,126 @@ async def test_tool(req: ToolTestRequest):
     return {"tool": f"{req.tool_type}__{req.tool_name}", "result": result}
 
 
+def parse_response_output(response):
+    """Parse Supervisor API response output items."""
+    response_text = ""
+    tool_calls_log = []
+    mcp_approvals = []
+
+    output = getattr(response, 'output', []) or []
+    for item in output:
+        item_type = getattr(item, 'type', None)
+
+        if item_type == 'message':
+            for c in getattr(item, 'content', []):
+                if getattr(c, 'type', None) == 'output_text':
+                    response_text += getattr(c, 'text', '')
+                elif hasattr(c, 'text'):
+                    response_text += c.text
+
+        elif item_type == 'function_call':
+            name = getattr(item, 'name', 'unknown')
+            args_str = getattr(item, 'arguments', '{}')
+            try:
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+            except Exception:
+                args = {"raw": str(args_str)}
+
+            if name in ['get_system_metrics', 'search_knowledge_base', 'create_incident_ticket', 'list_services']:
+                tool_type, icon = "Custom MCP Server (App)", "wrench"
+            elif 'analyst' in name.lower() or 'agent' in name.lower():
+                tool_type, icon = "Custom Agent (App)", "robot"
+            elif any(k in name.lower() for k in ['classify', 'sla', 'format', 'budget', 'priority', 'incident']):
+                tool_type, icon = "UC Function", "database"
+            else:
+                tool_type, icon = "Tool", "wrench"
+
+            tool_calls_log.append({"name": name, "type": tool_type, "icon": icon, "args": args, "result": ""})
+
+        elif item_type == 'function_call_output':
+            output_val = getattr(item, 'output', '')
+            if tool_calls_log:
+                tool_calls_log[-1]["result"] = str(output_val)[:500]
+
+        elif item_type == 'mcp_approval_request':
+            # Auto-approve MCP tool calls
+            mcp_approvals.append({
+                "type": "mcp_approval_response",
+                "approve": True,
+                "approval_request_id": getattr(item, 'id', ''),
+            })
+            # Log it as a tool call
+            name = getattr(item, 'name', 'unknown')
+            args_str = getattr(item, 'arguments', '{}')
+            try:
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str
+            except Exception:
+                args = {}
+            tool_calls_log.append({
+                "name": name,
+                "type": "Custom MCP Server (App)",
+                "icon": "wrench",
+                "args": args,
+                "result": "(awaiting approval...)"
+            })
+
+        elif item_type == 'mcp_list_tools':
+            pass  # Tool discovery - no action needed
+
+    if not response_text and hasattr(response, 'output_text'):
+        response_text = response.output_text or ""
+
+    return response_text, tool_calls_log, mcp_approvals
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """Run the Supervisor API (client.responses.create) - the REAL Supervisor API."""
-    tool_calls_log = []
+    """Run the Supervisor API with MCP approval loop."""
+    all_tool_calls = []
 
     try:
-        # ─── THIS IS THE REAL SUPERVISOR API CALL ───────────────────────────
-        response = supervisor_client.responses.create(
-            model=LLM_MODEL,
-            input=[{
-                "type": "message",
-                "role": "user",
-                "content": req.message,
-            }],
-            tools=SUPERVISOR_TOOLS,
-            instructions=SUPERVISOR_INSTRUCTIONS,
-            stream=False,
-            extra_body={
-                "trace_destination": {
-                    "catalog_name": UC_CATALOG,
-                    "schema_name": UC_SCHEMA,
-                    "table_prefix": "supervisor_traces"
+        # Initial Supervisor API call
+        input_items = [{"type": "message", "role": "user", "content": req.message}]
+
+        max_rounds = 5
+        for round_num in range(max_rounds):
+            response = supervisor_client.responses.create(
+                model=LLM_MODEL,
+                input=input_items,
+                tools=SUPERVISOR_TOOLS,
+                instructions=SUPERVISOR_INSTRUCTIONS,
+                stream=False,
+                extra_body={
+                    "trace_destination": {
+                        "catalog_name": UC_CATALOG,
+                        "schema_name": UC_SCHEMA,
+                        "table_prefix": "supervisor_traces"
+                    }
                 }
-            }
-        )
+            )
 
-        # Parse the response output items for tool calls
-        response_text = ""
-        if hasattr(response, 'output') and response.output:
-            for item in response.output:
-                item_type = getattr(item, 'type', None)
-                if item_type == 'message':
-                    # Extract text content
-                    content = getattr(item, 'content', [])
-                    for c in content:
-                        if getattr(c, 'type', None) == 'output_text':
-                            response_text += getattr(c, 'text', '')
-                        elif hasattr(c, 'text'):
-                            response_text += c.text
-                elif item_type == 'function_call':
-                    name = getattr(item, 'name', 'unknown')
-                    args_str = getattr(item, 'arguments', '{}')
-                    try:
-                        args = json.loads(args_str) if isinstance(args_str, str) else args_str
-                    except:
-                        args = {"raw": str(args_str)}
+            response_text, tool_calls, mcp_approvals = parse_response_output(response)
+            all_tool_calls.extend(tool_calls)
 
-                    # Determine tool type for display
-                    if 'mcp' in name.lower() or name in ['get_system_metrics', 'search_knowledge_base', 'create_incident_ticket', 'list_services']:
-                        tool_type, icon = "Custom MCP Server (App)", "wrench"
-                    elif 'agent' in name.lower() or 'analyst' in name.lower():
-                        tool_type, icon = "Custom Agent (App)", "robot"
-                    elif 'classify' in name.lower() or 'sla' in name.lower() or 'format' in name.lower() or 'budget' in name.lower():
-                        tool_type, icon = "UC Function", "database"
-                    else:
-                        tool_type, icon = "Tool", "wrench"
+            if not mcp_approvals:
+                # No pending approvals - we're done
+                return {"response": response_text, "tool_calls": all_tool_calls}
 
-                    tool_calls_log.append({
-                        "name": name,
-                        "type": tool_type,
-                        "icon": icon,
-                        "args": args,
-                        "result": ""
-                    })
-                elif item_type == 'function_call_output':
-                    output = getattr(item, 'output', '')
-                    if tool_calls_log:
-                        tool_calls_log[-1]["result"] = str(output)[:500]
+            # Auto-approve MCP calls and continue
+            logger.info(f"Round {round_num+1}: Auto-approving {len(mcp_approvals)} MCP tool calls")
+            input_items = []
+            for item in getattr(response, 'output', []):
+                input_items.append(item)
+            for approval in mcp_approvals:
+                input_items.append(approval)
 
-        # Fallback: use output_text if available
-        if not response_text and hasattr(response, 'output_text'):
-            response_text = response.output_text or ""
-
-        return {"response": response_text, "tool_calls": tool_calls_log}
+        return {"response": response_text or "Max approval rounds reached.", "tool_calls": all_tool_calls}
 
     except Exception as e:
         logger.error(f"Supervisor API error: {e}", exc_info=True)
         return {
             "response": f"Supervisor API Error: {type(e).__name__}: {str(e)}",
-            "tool_calls": tool_calls_log
+            "tool_calls": all_tool_calls
         }
 
 
