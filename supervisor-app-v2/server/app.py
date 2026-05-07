@@ -229,10 +229,12 @@ def parse_response_output(response):
 
         elif item_type == 'mcp_approval_request':
             # Auto-approve MCP tool calls
+            req_id = getattr(item, 'id', '')
             mcp_approvals.append({
                 "type": "mcp_approval_response",
+                "id": req_id,
+                "approval_request_id": req_id,
                 "approve": True,
-                "approval_request_id": getattr(item, 'id', ''),
             })
             # Log it as a tool call
             name = getattr(item, 'name', 'unknown')
@@ -264,7 +266,7 @@ async def chat(req: ChatRequest):
     all_tool_calls = []
 
     try:
-        # Initial Supervisor API call
+        # Initial input
         input_items = [{"type": "message", "role": "user", "content": req.message}]
 
         max_rounds = 5
@@ -288,16 +290,19 @@ async def chat(req: ChatRequest):
             all_tool_calls.extend(tool_calls)
 
             if not mcp_approvals:
-                # No pending approvals - we're done
                 return {"response": response_text, "tool_calls": all_tool_calls}
 
-            # Auto-approve MCP calls and continue
+            # Replay full conversation with approvals interleaved after each request
             logger.info(f"Round {round_num+1}: Auto-approving {len(mcp_approvals)} MCP tool calls")
-            input_items = []
+            approval_map = {a["approval_request_id"]: a for a in mcp_approvals}
+            # Rebuild input: original input + output items + approvals after each mcp_approval_request
+            new_input = list(input_items)  # keep original conversation
             for item in getattr(response, 'output', []):
-                input_items.append(item)
-            for approval in mcp_approvals:
-                input_items.append(approval)
+                new_input.append(item)
+                item_id = getattr(item, 'id', None) if hasattr(item, 'id') else item.get('id')
+                if item_id and item_id in approval_map:
+                    new_input.append(approval_map[item_id])
+            input_items = new_input
 
         return {"response": response_text or "Max approval rounds reached.", "tool_calls": all_tool_calls}
 
