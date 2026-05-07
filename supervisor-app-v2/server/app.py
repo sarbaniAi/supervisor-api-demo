@@ -1,4 +1,4 @@
-"""FastAPI backend for Supervisor API Demo."""
+"""FastAPI backend for Supervisor API Demo - Using REAL Supervisor API (responses.create)."""
 
 import json
 import os
@@ -8,10 +8,9 @@ from typing import Optional
 
 import httpx
 from databricks.sdk import WorkspaceClient
+from databricks_openai import DatabricksOpenAI
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
@@ -22,15 +21,85 @@ app = FastAPI(title="Supervisor API Demo")
 # ─── Config ────────────────────────────────────────────────────────────────────
 w = WorkspaceClient()
 HOST = w.config.host
-MCP_APP_URL = os.getenv("MCP_APP_URL", "https://mcp-ops-tools-7474660536314099.aws.databricksapps.com")
-AGENT_APP_URL = os.getenv("AGENT_APP_URL", "https://agent-data-analyst-7474660536314099.aws.databricksapps.com")
 LLM_MODEL = os.getenv("LLM_MODEL", "databricks-claude-sonnet-4-6")
 UC_CATALOG = os.getenv("UC_CATALOG", "classic_stable_yh3b2z_catalog")
 UC_SCHEMA = os.getenv("UC_SCHEMA", "supertvisor-api")
 SQL_WAREHOUSE_ID = os.getenv("SQL_WAREHOUSE_ID", "25899ae5a5341c16")
 WORKSPACE_URL = os.getenv("WORKSPACE_URL", HOST)
+MCP_APP_URL = os.getenv("MCP_APP_URL", "https://mcp-ops-tools-7474660536314099.aws.databricksapps.com")
+AGENT_APP_URL = os.getenv("AGENT_APP_URL", "https://agent-data-analyst-7474660536314099.aws.databricksapps.com")
+
+# ─── Supervisor API Client ─────────────────────────────────────────────────────
+supervisor_client = DatabricksOpenAI(use_ai_gateway=True)
+
+# ─── Supervisor API Tool Definitions (exact format from docs) ──────────────────
+SUPERVISOR_TOOLS = [
+    # Custom MCP Server hosted on Databricks App
+    {
+        "type": "app",
+        "app": {
+            "name": "mcp-ops-tools",
+            "description": "Custom MCP server with operations tools: get system metrics for any service, search the operations knowledge base for runbooks and troubleshooting guides, create incident tickets, and list all monitored services."
+        }
+    },
+    # Custom Agent hosted on Databricks App
+    {
+        "type": "app",
+        "app": {
+            "name": "agent-data-analyst",
+            "description": "A specialized data analyst agent that analyzes operational data including incident trends, service reliability metrics, SLA compliance, and cost analysis. Ask it questions about trends, patterns, reliability, uptime, costs, or general operational summaries."
+        }
+    },
+    # UC Functions
+    {
+        "type": "uc_function",
+        "uc_function": {
+            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.classify_priority",
+            "description": "Classifies incident priority (P1-P4) based on error rate percentage, P99 latency in milliseconds, and number of affected users."
+        }
+    },
+    {
+        "type": "uc_function",
+        "uc_function": {
+            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.calculate_sla_budget",
+            "description": "Calculates remaining SLA error budget given current uptime, SLA target, period length, and days elapsed. Returns budget status and risk level."
+        }
+    },
+    {
+        "type": "uc_function",
+        "uc_function": {
+            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.format_incident_summary",
+            "description": "Formats a professional incident summary report for stakeholder communication given service name, severity, error rate, latency, and description."
+        }
+    },
+]
+
+SUPERVISOR_INSTRUCTIONS = """You are an intelligent operations supervisor agent. You orchestrate multiple specialized tools:
+
+**Custom MCP Server on Databricks Apps** (mcp-ops-tools):
+- get_system_metrics: Real-time service metrics (CPU, memory, latency, error rate)
+- search_knowledge_base: Operations runbooks and troubleshooting guides
+- create_incident_ticket: Create and track incident tickets
+- list_services: List all monitored services with status
+
+**Custom Agent on Databricks Apps** (agent-data-analyst):
+- Operational analytics: incident trends, service reliability, SLA compliance, cost analysis
+
+**Unity Catalog Functions**:
+- classify_priority: Classify incident severity (P1-P4) from metrics
+- calculate_sla_budget: Calculate remaining SLA error budget
+- format_incident_summary: Generate formatted stakeholder reports
+
+When investigating issues:
+1. Gather metrics with MCP tools
+2. Analyze trends with the data analyst agent
+3. Classify priority via UC function
+4. Create tickets and generate reports as needed
+
+Be thorough and show your reasoning. Format responses with clear markdown sections."""
 
 
+# ─── Helper for auth (used by test-tool endpoint for direct tool testing) ──────
 def get_auth():
     header = w.config._header_factory()
     if isinstance(header, dict):
@@ -38,59 +107,19 @@ def get_auth():
     return f"Bearer {header}"
 
 
-def get_token():
-    auth = get_auth()
-    return auth.replace("Bearer ", "") if "Bearer" in auth else auth
-
-
-def get_llm_client():
-    return OpenAI(base_url=f"{HOST}/serving-endpoints", api_key=get_token())
-
-
-# ─── Tool Definitions ─────────────────────────────────────────────────────────
-TOOLS = [
-    {"type": "function", "function": {"name": "mcp__get_system_metrics", "description": "Get real-time system metrics for a service. Powered by Custom MCP Server on Databricks Apps.", "parameters": {"type": "object", "properties": {"service_name": {"type": "string", "description": "Service name"}}, "required": ["service_name"]}}},
-    {"type": "function", "function": {"name": "mcp__search_knowledge_base", "description": "Search ops knowledge base for runbooks. Powered by Custom MCP Server on Databricks Apps.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
-    {"type": "function", "function": {"name": "mcp__create_incident_ticket", "description": "Create incident ticket. Powered by Custom MCP Server on Databricks Apps.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "severity": {"type": "string", "enum": ["P1", "P2", "P3", "P4"]}, "affected_service": {"type": "string"}}, "required": ["title", "description", "severity", "affected_service"]}}},
-    {"type": "function", "function": {"name": "mcp__list_services", "description": "List all monitored services. Powered by Custom MCP Server on Databricks Apps.", "parameters": {"type": "object", "properties": {}}}},
-    {"type": "function", "function": {"name": "agent__data_analyst", "description": "Delegate analytics to Data Analyst Agent on Databricks Apps. Trends, reliability, costs, SLA.", "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}}},
-    {"type": "function", "function": {"name": "uc__classify_priority", "description": "Classify incident priority (P1-P4). Unity Catalog SQL function.", "parameters": {"type": "object", "properties": {"error_rate": {"type": "number"}, "p99_latency_ms": {"type": "number"}, "affected_users": {"type": "integer"}}, "required": ["error_rate", "p99_latency_ms", "affected_users"]}}},
-    {"type": "function", "function": {"name": "uc__calculate_sla_budget", "description": "Calculate SLA error budget. Unity Catalog SQL function.", "parameters": {"type": "object", "properties": {"uptime_percent": {"type": "number"}, "sla_target": {"type": "number"}, "days_in_period": {"type": "integer"}, "days_elapsed": {"type": "integer"}}, "required": ["uptime_percent", "sla_target", "days_in_period", "days_elapsed"]}}},
-    {"type": "function", "function": {"name": "uc__format_incident_summary", "description": "Format incident report for stakeholders. Unity Catalog SQL function.", "parameters": {"type": "object", "properties": {"service_name": {"type": "string"}, "severity": {"type": "string"}, "error_rate": {"type": "number"}, "latency_ms": {"type": "number"}, "description": {"type": "string"}}, "required": ["service_name", "severity", "error_rate", "latency_ms", "description"]}}},
-]
-
-SYSTEM_PROMPT = """You are an intelligent operations supervisor agent. You orchestrate multiple specialized tools:
-
-**Custom MCP Server on Databricks Apps** (mcp-ops-tools):
-- mcp__get_system_metrics: Real-time service metrics
-- mcp__search_knowledge_base: Operations runbooks and guides
-- mcp__create_incident_ticket: Create incident tickets
-- mcp__list_services: List all services
-
-**Custom Agent on Databricks Apps** (agent-data-analyst):
-- agent__data_analyst: Operational analytics (trends, reliability, costs)
-
-**Unity Catalog Functions**:
-- uc__classify_priority: Classify incident severity
-- uc__calculate_sla_budget: Calculate SLA error budget
-- uc__format_incident_summary: Generate stakeholder reports
-
-Be thorough and show your reasoning. Format responses with clear markdown sections."""
-
-
-# ─── Tool Execution ───────────────────────────────────────────────────────────
-def execute_tool(tool_name: str, arguments: dict) -> str:
+# ─── Direct tool execution (for interactive test panels only) ──────────────────
+def execute_tool_direct(tool_type: str, tool_name: str, arguments: dict) -> str:
+    """Direct tool execution for the interactive test panels (bypasses Supervisor API)."""
     auth = get_auth()
     try:
-        if tool_name.startswith("mcp__"):
-            mcp_tool = tool_name[5:]
+        if tool_type == "mcp":
             with httpx.Client(timeout=30, follow_redirects=True) as client:
-                resp = client.post(f"{MCP_APP_URL}/api/tool", headers={"Authorization": auth, "Content-Type": "application/json"}, json={"tool": mcp_tool, "arguments": arguments})
+                resp = client.post(f"{MCP_APP_URL}/api/tool", headers={"Authorization": auth, "Content-Type": "application/json"}, json={"tool": tool_name, "arguments": arguments})
                 if resp.status_code != 200:
                     return f"MCP Error HTTP {resp.status_code}: {resp.text[:300]}"
                 return resp.json().get("result", json.dumps(resp.json()))
 
-        elif tool_name.startswith("agent__"):
+        elif tool_type == "agent":
             with httpx.Client(timeout=30) as client:
                 resp = client.post(f"{AGENT_APP_URL}/chat", headers={"Authorization": auth, "Content-Type": "application/json"}, json={"messages": [{"role": "user", "content": arguments.get("question", "")}]})
                 if resp.status_code != 200:
@@ -98,8 +127,8 @@ def execute_tool(tool_name: str, arguments: dict) -> str:
                 choices = resp.json().get("choices", [])
                 return choices[0]["message"]["content"] if choices else json.dumps(resp.json())
 
-        elif tool_name.startswith("uc__"):
-            func = tool_name[4:]
+        elif tool_type == "uc":
+            func = tool_name
             if func == "classify_priority":
                 sql = f"SELECT `{UC_CATALOG}`.`{UC_SCHEMA}`.classify_priority({arguments['error_rate']}, {arguments['p99_latency_ms']}, {arguments['affected_users']})"
             elif func == "calculate_sla_budget":
@@ -119,7 +148,7 @@ def execute_tool(tool_name: str, arguments: dict) -> str:
                     return data[0][0]
                 return f"SQL Error: {resp.json().get('status', {}).get('error', {}).get('message', 'Unknown')}"
         else:
-            return f"Unknown tool: {tool_name}"
+            return f"Unknown tool type: {tool_type}"
     except Exception as e:
         return f"Error: {type(e).__name__}: {str(e)}"
 
@@ -131,7 +160,7 @@ class ChatRequest(BaseModel):
 
 
 class ToolTestRequest(BaseModel):
-    tool_type: str  # "mcp", "agent", "uc"
+    tool_type: str
     tool_name: str
     arguments: dict
 
@@ -152,56 +181,97 @@ async def get_config():
 
 @app.post("/api/test-tool")
 async def test_tool(req: ToolTestRequest):
-    """Test individual tool - for the interactive demo sections."""
-    full_name = f"{req.tool_type}__{req.tool_name}" if not req.tool_name.startswith(f"{req.tool_type}__") else req.tool_name
-    result = execute_tool(full_name, req.arguments)
-    return {"tool": full_name, "result": result}
+    """Test individual tool directly - for the interactive demo sections."""
+    result = execute_tool_direct(req.tool_type, req.tool_name, req.arguments)
+    return {"tool": f"{req.tool_type}__{req.tool_name}", "result": result}
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """Run the supervisor agent loop."""
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": req.message},
-    ]
+    """Run the Supervisor API (client.responses.create) - the REAL Supervisor API."""
     tool_calls_log = []
-    max_iter = 10
 
-    for _ in range(max_iter):
-        client = get_llm_client()
-        response = client.chat.completions.create(model=LLM_MODEL, messages=messages, tools=TOOLS, tool_choice="auto")
-        choice = response.choices[0]
+    try:
+        # ─── THIS IS THE REAL SUPERVISOR API CALL ───────────────────────────
+        response = supervisor_client.responses.create(
+            model=LLM_MODEL,
+            input=[{
+                "type": "message",
+                "role": "user",
+                "content": req.message,
+            }],
+            tools=SUPERVISOR_TOOLS,
+            instructions=SUPERVISOR_INSTRUCTIONS,
+            stream=False,
+            extra_body={
+                "trace_destination": {
+                    "catalog_name": UC_CATALOG,
+                    "schema_name": UC_SCHEMA,
+                    "table_prefix": "supervisor_traces"
+                }
+            }
+        )
 
-        if choice.message.tool_calls:
-            messages.append(choice.message)
-            for tc in choice.message.tool_calls:
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
+        # Parse the response output items for tool calls
+        response_text = ""
+        if hasattr(response, 'output') and response.output:
+            for item in response.output:
+                item_type = getattr(item, 'type', None)
+                if item_type == 'message':
+                    # Extract text content
+                    content = getattr(item, 'content', [])
+                    for c in content:
+                        if getattr(c, 'type', None) == 'output_text':
+                            response_text += getattr(c, 'text', '')
+                        elif hasattr(c, 'text'):
+                            response_text += c.text
+                elif item_type == 'function_call':
+                    name = getattr(item, 'name', 'unknown')
+                    args_str = getattr(item, 'arguments', '{}')
+                    try:
+                        args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                    except:
+                        args = {"raw": str(args_str)}
 
-                if tc.function.name.startswith("mcp__"):
-                    tool_type, icon = "Custom MCP Server (App)", "wrench"
-                elif tc.function.name.startswith("agent__"):
-                    tool_type, icon = "Custom Agent (App)", "robot"
-                elif tc.function.name.startswith("uc__"):
-                    tool_type, icon = "UC Function", "database"
-                else:
-                    tool_type, icon = "Unknown", "help-circle"
+                    # Determine tool type for display
+                    if 'mcp' in name.lower() or name in ['get_system_metrics', 'search_knowledge_base', 'create_incident_ticket', 'list_services']:
+                        tool_type, icon = "Custom MCP Server (App)", "wrench"
+                    elif 'agent' in name.lower() or 'analyst' in name.lower():
+                        tool_type, icon = "Custom Agent (App)", "robot"
+                    elif 'classify' in name.lower() or 'sla' in name.lower() or 'format' in name.lower() or 'budget' in name.lower():
+                        tool_type, icon = "UC Function", "database"
+                    else:
+                        tool_type, icon = "Tool", "wrench"
 
-                result = execute_tool(tc.function.name, args)
-                tool_calls_log.append({"name": tc.function.name, "type": tool_type, "icon": icon, "args": args, "result": result[:500]})
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-        else:
-            return {"response": choice.message.content or "", "tool_calls": tool_calls_log}
+                    tool_calls_log.append({
+                        "name": name,
+                        "type": tool_type,
+                        "icon": icon,
+                        "args": args,
+                        "result": ""
+                    })
+                elif item_type == 'function_call_output':
+                    output = getattr(item, 'output', '')
+                    if tool_calls_log:
+                        tool_calls_log[-1]["result"] = str(output)[:500]
 
-    return {"response": "Max iterations reached.", "tool_calls": tool_calls_log}
+        # Fallback: use output_text if available
+        if not response_text and hasattr(response, 'output_text'):
+            response_text = response.output_text or ""
+
+        return {"response": response_text, "tool_calls": tool_calls_log}
+
+    except Exception as e:
+        logger.error(f"Supervisor API error: {e}", exc_info=True)
+        return {
+            "response": f"Supervisor API Error: {type(e).__name__}: {str(e)}",
+            "tool_calls": tool_calls_log
+        }
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "healthy", "model": LLM_MODEL, "tools": len(TOOLS)}
+    return {"status": "healthy", "model": LLM_MODEL, "tools": len(SUPERVISOR_TOOLS), "api": "Supervisor API (responses.create)"}
 
 
 # ─── Serve Frontend ───────────────────────────────────────────────────────────
