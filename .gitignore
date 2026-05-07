@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.databricks/
+.env
+.venv/
+*.egg-info/
+supervisor-app/

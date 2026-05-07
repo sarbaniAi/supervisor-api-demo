@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Supervisor API Demo</title>
+<style>
+:root {
+  --primary: #1b3a4b;
+  --accent: #ff6f00;
+  --accent-light: #fff3e0;
+  --green: #2e7d32;
+  --green-light: #e8f5e9;
+  --green-border: #a5d6a7;
+  --blue: #1565c0;
+  --blue-light: #e3f2fd;
+  --blue-border: #90caf9;
+  --red: #c62828;
+  --red-light: #ffebee;
+  --gray: #f5f5f5;
+  --gray-border: #e0e0e0;
+  --text: #212121;
+  --text-secondary: #616161;
+  --sidebar-bg: #fafafa;
+  --sidebar-active: #e3f2fd;
+  --code-bg: #1e1e2e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--text); display: flex; height: 100vh; }
+
+/* Sidebar */
+.sidebar { width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--gray-border); overflow-y: auto; flex-shrink: 0; padding: 16px 0; }
+.sidebar-title { padding: 8px 20px 20px; font-size: 18px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+.sidebar-title svg { width: 24px; height: 24px; }
+.sidebar-section { padding: 8px 20px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; }
+.sidebar-item { padding: 8px 20px; cursor: pointer; font-size: 14px; color: var(--text); transition: all 0.15s; display: flex; align-items: flex-start; gap: 8px; border-left: 3px solid transparent; }
+.sidebar-item:hover { background: #f0f0f0; }
+.sidebar-item.active { background: var(--sidebar-active); border-left-color: var(--blue); font-weight: 600; }
+.sidebar-item .item-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.sidebar-item .item-text { display: flex; flex-direction: column; }
+.sidebar-item .item-label { font-size: 14px; }
+.sidebar-item .item-desc { font-size: 11px; color: var(--text-secondary); font-weight: 400; margin-top: 2px; }
+.sidebar-links { margin-top: 20px; padding: 16px 20px; border-top: 1px solid var(--gray-border); }
+.sidebar-links a { display: block; font-size: 12px; color: var(--blue); text-decoration: none; padding: 4px 0; }
+.sidebar-links a:hover { text-decoration: underline; }
+
+/* Main content */
+.main { flex: 1; overflow-y: auto; padding: 40px 60px; max-width: 960px; }
+.page { display: none; }
+.page.active { display: block; }
+
+h1 { font-size: 28px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+h2 { font-size: 22px; font-weight: 600; color: var(--primary); margin: 32px 0 12px; display: flex; align-items: center; gap: 8px; }
+h3 { font-size: 17px; font-weight: 600; margin: 20px 0 8px; }
+p, li { font-size: 14px; line-height: 1.7; color: var(--text); }
+.subtitle { font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; }
+a { color: var(--blue); }
+
+/* Cards & boxes */
+.info-box { padding: 16px 20px; border-radius: 8px; margin: 16px 0; font-size: 14px; }
+.info-box.green { background: var(--green-light); border: 1px solid var(--green-border); }
+.info-box.blue { background: var(--blue-light); border: 1px solid var(--blue-border); }
+.info-box.orange { background: var(--accent-light); border: 1px solid #ffe0b2; }
+.info-box.red { background: var(--red-light); border: 1px solid #ef9a9a; }
+.info-box strong { color: var(--primary); }
+
+/* Comparison table */
+table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+th { background: var(--primary); color: white; padding: 10px 14px; text-align: left; font-weight: 600; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--gray-border); }
+tr:hover { background: #f9f9f9; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge.new { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
+.badge.api { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-border); }
+.badge.ui { background: var(--accent-light); color: var(--accent); border: 1px solid #ffe0b2; }
+
+/* Code blocks */
+.code-block { background: var(--code-bg); color: #cdd6f4; border-radius: 8px; padding: 16px 20px; margin: 12px 0; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.6; position: relative; }
+.code-block .file-name { position: absolute; top: 8px; right: 12px; font-size: 11px; color: #6c7086; }
+.code-block .keyword { color: #cba6f7; }
+.code-block .string { color: #a6e3a1; }
+.code-block .comment { color: #6c7086; }
+.code-block .func { color: #89b4fa; }
+
+/* Architecture diagram */
+.arch-diagram { background: white; border: 1px solid var(--gray-border); border-radius: 8px; padding: 24px; margin: 16px 0; font-family: monospace; font-size: 13px; line-height: 1.8; white-space: pre; text-align: center; }
+
+/* Interactive demo */
+.demo-section { background: white; border: 1px solid var(--gray-border); border-radius: 8px; padding: 24px; margin: 16px 0; }
+.demo-section h3 { margin-top: 0; }
+.btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: #2c5f7a; }
+.btn-green { background: var(--green); color: white; }
+.btn-green:hover { background: #1b5e20; }
+.btn-blue { background: var(--blue); color: white; }
+.btn-blue:hover { background: #0d47a1; }
+.btn-outline { background: white; color: var(--primary); border: 1px solid var(--gray-border); }
+.btn-outline:hover { background: var(--gray); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+select, input { padding: 8px 12px; border: 1px solid var(--gray-border); border-radius: 6px; font-size: 14px; }
+textarea { padding: 8px 12px; border: 1px solid var(--gray-border); border-radius: 6px; font-size: 14px; width: 100%; font-family: inherit; }
+.result-box { background: var(--gray); border: 1px solid var(--gray-border); border-radius: 6px; padding: 12px 16px; margin-top: 12px; font-size: 13px; font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto; display: none; }
+.result-box.visible { display: block; }
+
+/* Tool call log */
+.tool-call { background: var(--gray); border-radius: 6px; padding: 10px 14px; margin: 8px 0; font-size: 13px; display: flex; align-items: flex-start; gap: 10px; }
+.tool-call .tc-icon { font-size: 18px; }
+.tool-call .tc-type { font-size: 11px; color: var(--text-secondary); }
+.tool-call .tc-name { font-weight: 600; font-family: monospace; }
+
+/* Steps */
+.step { display: flex; gap: 16px; margin: 16px 0; }
+.step-num { width: 32px; height: 32px; border-radius: 50%; background: var(--blue); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.step-content { flex: 1; }
+.step-content h4 { font-size: 15px; margin-bottom: 4px; }
+
+/* Two column */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 16px 0; }
+.col-card { border: 1px solid var(--gray-border); border-radius: 8px; padding: 20px; }
+.col-card h3 { margin-top: 0; }
+.col-card.highlight { border-color: var(--green-border); background: var(--green-light); }
+
+/* Chat */
+.chat-container { border: 1px solid var(--gray-border); border-radius: 8px; max-height: 500px; overflow-y: auto; padding: 16px; margin: 12px 0; background: white; }
+.chat-msg { margin: 8px 0; padding: 10px 14px; border-radius: 8px; font-size: 14px; line-height: 1.6; }
+.chat-msg.user { background: var(--blue-light); margin-left: 40px; }
+.chat-msg.assistant { background: var(--gray); margin-right: 40px; }
+.chat-msg.tool { background: #fff8e1; margin: 4px 20px; font-size: 12px; font-family: monospace; }
+.chat-input { display: flex; gap: 8px; margin-top: 12px; }
+.chat-input input { flex: 1; }
+
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: var(--blue); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-title">
+    <span>&#127919;</span> Supervisor API Demo
+  </div>
+
+  <div class="sidebar-section">Overview</div>
+  <div class="sidebar-item active" data-page="overview">
+    <span class="item-icon">&#9432;</span>
+    <span class="item-text">
+      <span class="item-label">Demo Overview</span>
+      <span class="item-desc">Introduction to Supervisor API</span>
+    </span>
+  </div>
+
+  <div class="sidebar-section">New Tool Types</div>
+  <div class="sidebar-item" data-page="mcp-server">
+    <span class="item-icon">&#128295;</span>
+    <span class="item-text">
+      <span class="item-label">Custom MCP Server on Apps</span>
+      <span class="item-desc">Build and host MCP tools</span>
+    </span>
+  </div>
+  <div class="sidebar-item" data-page="custom-agent">
+    <span class="item-icon">&#129302;</span>
+    <span class="item-text">
+      <span class="item-label">Custom Agent on Apps</span>
+      <span class="item-desc">Deploy specialized agents as tools</span>
+    </span>
+  </div>
+  <div class="sidebar-item" data-page="uc-functions">
+    <span class="item-icon">&#128202;</span>
+    <span class="item-text">
+      <span class="item-label">UC Functions</span>
+      <span class="item-desc">SQL-native tools with governance</span>
+    </span>
+  </div>
+  <div class="sidebar-item" data-page="external-mcp">
+    <span class="item-icon">&#128274;</span>
+    <span class="item-text">
+      <span class="item-label">External MCP (U2M Auth)</span>
+      <span class="item-desc">Connect third-party MCP servers</span>
+    </span>
+  </div>
+
+  <div class="sidebar-section">Compare</div>
+  <div class="sidebar-item" data-page="comparison">
+    <span class="item-icon">&#9878;</span>
+    <span class="item-text">
+      <span class="item-label">Supervisor API vs Agent Bricks</span>
+      <span class="item-desc">When to use which approach</span>
+    </span>
+  </div>
+  <div class="sidebar-item" data-page="selling-points">
+    <span class="item-icon">&#128640;</span>
+    <span class="item-text">
+      <span class="item-label">Selling Points & Objections</span>
+      <span class="item-desc">SA field guide for positioning</span>
+    </span>
+  </div>
+
+  <div class="sidebar-section">Try It</div>
+  <div class="sidebar-item" data-page="live-demo">
+    <span class="item-icon">&#128172;</span>
+    <span class="item-text">
+      <span class="item-label">Live Supervisor Agent</span>
+      <span class="item-desc">Chat with the orchestrator</span>
+    </span>
+  </div>
+
+  <div class="sidebar-links">
+    <a href="#" id="link-notebook-setup" target="_blank">&#128196; Setup Notebook</a>
+    <a href="#" id="link-notebook-demo" target="_blank">&#128196; Demo Notebook</a>
+    <a href="https://docs.databricks.com/aws/en/generative-ai/agent-bricks/supervisor-api" target="_blank">&#128214; Supervisor API Docs</a>
+    <a href="https://docs.databricks.com/aws/en/generative-ai/mcp" target="_blank">&#128214; MCP on Databricks</a>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main">
+
+<!-- ═══════════════════════ PAGE: Overview ═══════════════════════ -->
+<div class="page active" id="page-overview">
+  <h1>Supervisor API: New Tool Types</h1>
+  <p class="subtitle">Build custom agents that orchestrate any tool - MCP servers, custom agents, UC functions, and external services - all governed by AI Gateway.</p>
+
+  <div class="info-box green">
+    <strong>What's New:</strong> Supervisor Agent and Supervisor API now support <strong>Custom MCP Servers on Apps</strong>, <strong>Custom Agents on Apps</strong>, and <strong>External MCP Servers with U2M Per-User Auth</strong> as tools. This unlocks connecting <em>any</em> custom logic as a tool, not just Databricks-native services.
+  </div>
+
+  <h2>&#128736; Architecture</h2>
+  <div class="arch-diagram">
+                  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+                  &#9474;     Supervisor API        &#9474;
+                  &#9474;  client.responses.create() &#9474;
+                  &#9474;  Model + Tools + Instructions&#9474;
+                  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+                               &#9474;
+          &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9532;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+          &#9474;               &#9474;                &#9474;
+  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488; &#9484;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488; &#9484;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+  &#9474; MCP Server    &#9474; &#9474; Custom Agent  &#9474; &#9474; UC Functions   &#9474;
+  &#9474; on App  <span class="badge new">NEW</span>&#9474; &#9474; on App <span class="badge new">NEW</span> &#9474; &#9474;                &#9474;
+  &#9474;               &#9474; &#9474;              &#9474; &#9474;                &#9474;
+  &#9474; @mcp.tool()   &#9474; &#9474; POST /chat   &#9474; &#9474; SQL Functions  &#9474;
+  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496; &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496; &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;
+  </div>
+
+  <h2>&#128218; Supported Tool Types</h2>
+  <table>
+    <tr><th>Tool Type</th><th>Config Key</th><th>What It Does</th><th>Status</th></tr>
+    <tr><td><strong>Custom MCP Server on Apps</strong></td><td><code>app</code></td><td>Host your own MCP tools on Databricks Apps</td><td><span class="badge new">NEW</span></td></tr>
+    <tr><td><strong>Custom Agent on Apps</strong></td><td><code>app</code></td><td>Deploy specialized agents as supervisor tools</td><td><span class="badge new">NEW</span></td></tr>
+    <tr><td><strong>External MCP (U2M Auth)</strong></td><td><code>uc_connection</code></td><td>Connect external MCP servers with per-user OAuth</td><td><span class="badge new">NEW</span></td></tr>
+    <tr><td>Genie Space</td><td><code>genie_space</code></td><td>Natural language data queries</td><td>Existing</td></tr>
+    <tr><td>UC Functions</td><td><code>uc_function</code></td><td>SQL functions as tools with UC governance</td><td>Existing</td></tr>
+    <tr><td>Knowledge Assistant</td><td><code>knowledge_assistant</code></td><td>RAG over your documents</td><td>Existing</td></tr>
+    <tr><td>System Connectors</td><td><code>uc_connection</code></td><td>GitHub, Google Drive, Jira, SharePoint</td><td>Existing</td></tr>
+  </table>
+
+  <h2>&#128187; Quick Start Code</h2>
+  <div class="code-block">
+    <span class="file-name">supervisor_api.py</span>
+<span class="keyword">from</span> databricks_openai <span class="keyword">import</span> DatabricksOpenAI
+
+client = DatabricksOpenAI(use_ai_gateway=<span class="keyword">True</span>)
+
+response = client.responses.create(
+    model=<span class="string">"databricks-claude-sonnet-4-6"</span>,
+    input=[{<span class="string">"type"</span>: <span class="string">"message"</span>, <span class="string">"role"</span>: <span class="string">"user"</span>,
+            <span class="string">"content"</span>: <span class="string">"Check system health and create tickets for issues"</span>}],
+    tools=[
+        <span class="comment"># Custom MCP Server on Databricks App</span>
+        {<span class="string">"type"</span>: <span class="string">"app"</span>, <span class="string">"app"</span>: {<span class="string">"name"</span>: <span class="string">"mcp-ops-tools"</span>,
+         <span class="string">"description"</span>: <span class="string">"Operations monitoring and incident management"</span>}},
+
+        <span class="comment"># Custom Agent on Databricks App</span>
+        {<span class="string">"type"</span>: <span class="string">"app"</span>, <span class="string">"app"</span>: {<span class="string">"name"</span>: <span class="string">"agent-data-analyst"</span>,
+         <span class="string">"description"</span>: <span class="string">"Operational analytics and trend analysis"</span>}},
+
+        <span class="comment"># UC Function</span>
+        {<span class="string">"type"</span>: <span class="string">"uc_function"</span>, <span class="string">"uc_function"</span>: {
+         <span class="string">"name"</span>: <span class="string">"catalog.schema.classify_priority"</span>,
+         <span class="string">"description"</span>: <span class="string">"Classify incident severity"</span>}},
+
+        <span class="comment"># External MCP via U2M Auth</span>
+        {<span class="string">"type"</span>: <span class="string">"uc_connection"</span>, <span class="string">"uc_connection"</span>: {
+         <span class="string">"name"</span>: <span class="string">"github_mcp_connection"</span>,
+         <span class="string">"description"</span>: <span class="string">"GitHub repos and PRs"</span>}},
+    ],
+    stream=<span class="keyword">True</span>
+)
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: MCP Server ═══════════════════════ -->
+<div class="page" id="page-mcp-server">
+  <h1>Custom MCP Server on Databricks Apps</h1>
+  <p class="subtitle">Host your own MCP server with custom tools, governed by AI Gateway and accessible to any Supervisor agent.</p>
+
+  <div class="info-box blue">
+    <strong>What is this?</strong> You write Python functions decorated with <code>@mcp.tool()</code>, deploy them as a Databricks App, and they become tools that any Supervisor Agent can discover and call. The MCP server exposes tools via the Streamable HTTP transport.
+  </div>
+
+  <h2>How It Works</h2>
+  <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Write MCP Tools</h4><p>Use the <code>FastMCP</code> framework. Each tool is a Python function with a docstring that the LLM reads to decide when to call it.</p></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Deploy as Databricks App</h4><p>Push your code with <code>databricks apps deploy</code>. The app runs on managed compute with authentication built in.</p></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Register as Supervisor Tool</h4><p>Add <code>{"type": "app", "app": {"name": "your-app"}}</code> to the Supervisor's tools list. That's it.</p></div></div>
+
+  <h2>Example Code</h2>
+  <div class="code-block">
+    <span class="file-name">app.py (MCP Server)</span>
+<span class="keyword">from</span> mcp.server.fastmcp <span class="keyword">import</span> FastMCP
+
+mcp = FastMCP(<span class="string">"ops-tools"</span>)
+
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="func">get_system_metrics</span>(service_name: <span class="func">str</span>) -> <span class="func">str</span>:
+    <span class="string">"""Get real-time system metrics for a service.
+    Returns CPU, memory, latency, and error rate."""</span>
+    <span class="comment"># Your custom logic here - call Prometheus, Datadog, etc.</span>
+    metrics = fetch_metrics_from_monitoring(service_name)
+    <span class="keyword">return</span> json.dumps(metrics)
+
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="func">create_incident_ticket</span>(title: <span class="func">str</span>, severity: <span class="func">str</span>) -> <span class="func">str</span>:
+    <span class="string">"""Create an incident ticket in the ops system."""</span>
+    ticket = create_in_pagerduty(title, severity)
+    <span class="keyword">return</span> json.dumps(ticket)
+  </div>
+
+  <h2>Interactive Demo</h2>
+  <p>Test the live MCP Server (<code>mcp-ops-tools</code>) deployed on this workspace:</p>
+  <div class="demo-section">
+    <h3>Call MCP Tool</h3>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <select id="mcp-tool-select">
+        <option value="get_system_metrics">get_system_metrics</option>
+        <option value="list_services">list_services</option>
+        <option value="search_knowledge_base">search_knowledge_base</option>
+      </select>
+      <input id="mcp-tool-arg" placeholder="service name or query" value="payment-gateway" style="width:200px;">
+      <button class="btn btn-primary" onclick="testMcpTool()">Run Tool</button>
+    </div>
+    <div class="result-box" id="mcp-result"></div>
+  </div>
+
+  <h2>Interactive Notebook</h2>
+  <div class="info-box orange">
+    For a hands-on experience with the full MCP server code, open the accompanying notebook:
+    <br><br><strong><a href="#" id="link-setup-nb" target="_blank">01_setup_uc_functions</a></strong>
+    <br><em>The notebook contains the complete MCP server implementation and deployment steps.</em>
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: Custom Agent ═══════════════════════ -->
+<div class="page" id="page-custom-agent">
+  <h1>Custom Agent on Databricks Apps</h1>
+  <p class="subtitle">Deploy specialized agents that the Supervisor can delegate to for complex analytical tasks.</p>
+
+  <div class="info-box blue">
+    <strong>Why this matters:</strong> Instead of giving the Supervisor all the logic, you can build focused sub-agents (e.g., data analyst, compliance checker, code reviewer) and the Supervisor delegates to them. Each agent can have its own model, tools, and context.
+  </div>
+
+  <h2>Example Code</h2>
+  <div class="code-block">
+    <span class="file-name">app.py (Custom Agent)</span>
+<span class="keyword">from</span> fastapi <span class="keyword">import</span> FastAPI, Request
+
+app = FastAPI()
+
+<span class="keyword">@app.post</span>(<span class="string">"/chat"</span>)
+<span class="keyword">async def</span> <span class="func">chat</span>(request: Request):
+    body = <span class="keyword">await</span> request.json()
+    question = body[<span class="string">"messages"</span>][-1][<span class="string">"content"</span>]
+
+    <span class="comment"># Your specialized analysis logic</span>
+    analysis = analyze_operational_data(question)
+
+    <span class="keyword">return</span> {<span class="string">"choices"</span>: [{<span class="string">"message"</span>: {
+        <span class="string">"role"</span>: <span class="string">"assistant"</span>,
+        <span class="string">"content"</span>: analysis
+    }}]}
+  </div>
+
+  <h2>Interactive Demo</h2>
+  <div class="demo-section">
+    <h3>Ask the Data Analyst Agent</h3>
+    <select id="agent-question" style="width:100%; margin-bottom:8px;">
+      <option value="Analyze incident trends for the past week">Incident trend analysis</option>
+      <option value="Check service reliability and SLA compliance">Service reliability report</option>
+      <option value="Analyze infrastructure costs this month">Cost analysis</option>
+      <option value="Give me an operational summary">Operational summary</option>
+    </select>
+    <button class="btn btn-primary" onclick="testAgent()">Ask Agent</button>
+    <div class="result-box" id="agent-result"></div>
+  </div>
+
+  <h2>Multi-Cloud Pattern</h2>
+  <p>Custom Agents on Apps can proxy to agents running on <strong>other clouds</strong>:</p>
+  <div class="two-col">
+    <div class="col-card">
+      <h3>AWS Bedrock Agent</h3>
+      <div class="code-block" style="font-size:12px;">
+<span class="keyword">import</span> boto3
+client = boto3.client(<span class="string">'bedrock-agent-runtime'</span>)
+response = client.invoke_agent(
+    agentId=<span class="string">"YOUR_ID"</span>,
+    inputText=question
+)
+      </div>
+    </div>
+    <div class="col-card">
+      <h3>GCP Vertex AI Agent</h3>
+      <div class="code-block" style="font-size:12px;">
+<span class="keyword">from</span> google.cloud <span class="keyword">import</span> aiplatform
+agent = aiplatform.Agent(<span class="string">"projects/.."</span>)
+response = agent.chat(question)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: UC Functions ═══════════════════════ -->
+<div class="page" id="page-uc-functions">
+  <h1>Unity Catalog Functions as Tools</h1>
+  <p class="subtitle">SQL-native tools with full Unity Catalog governance, lineage, and access control.</p>
+
+  <h2>Example Code</h2>
+  <div class="code-block">
+    <span class="file-name">SQL</span>
+<span class="keyword">CREATE FUNCTION</span> catalog.schema.classify_priority(
+  error_rate <span class="func">DOUBLE</span>,
+  p99_latency_ms <span class="func">DOUBLE</span>,
+  affected_users <span class="func">INT</span>
+) <span class="keyword">RETURNS STRING</span>
+<span class="keyword">COMMENT</span> <span class="string">'Classifies incident priority (P1-P4)'</span>
+<span class="keyword">RETURN CASE</span>
+  <span class="keyword">WHEN</span> error_rate > 5.0 <span class="keyword">THEN</span> <span class="string">'P1 - Critical'</span>
+  <span class="keyword">WHEN</span> error_rate > 2.0 <span class="keyword">THEN</span> <span class="string">'P2 - High'</span>
+  <span class="keyword">ELSE</span> <span class="string">'P3 - Medium'</span>
+<span class="keyword">END</span>;
+  </div>
+
+  <h2>Interactive Demo</h2>
+  <div class="demo-section">
+    <h3>Test: Classify Priority</h3>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <label>Error Rate: <input id="uc-error" type="number" value="3.5" style="width:80px;"></label>
+      <label>P99 Latency: <input id="uc-latency" type="number" value="600" style="width:80px;"></label>
+      <label>Affected Users: <input id="uc-users" type="number" value="5000" style="width:80px;"></label>
+      <button class="btn btn-primary" onclick="testUcFunction()">Classify</button>
+    </div>
+    <div class="result-box" id="uc-result"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: External MCP ═══════════════════════ -->
+<div class="page" id="page-external-mcp">
+  <h1>External MCP Servers with U2M Auth</h1>
+  <p class="subtitle">Securely connect third-party MCP servers with per-user OAuth authentication.</p>
+
+  <div class="info-box green">
+    <strong>Per-User Auth (U2M):</strong> Each user authenticates with their own credentials. When a Supervisor Agent calls a GitHub MCP tool, it uses <em>your</em> GitHub token, not a shared service account. This means results are personalized and access is properly scoped.
+  </div>
+
+  <h2>How It Works</h2>
+  <div class="step"><div class="step-num">1</div><div class="step-content"><h4>Create Unity Catalog Connection</h4><p>Catalog Explorer > Connections > Create HTTP Connection > Enable "Is MCP connection" > Configure OAuth U2M.</p></div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-content"><h4>Grant Access</h4><p>Grant <code>USE CONNECTION</code> to users who need the tools. Unity Catalog governs access.</p></div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-content"><h4>Add to Supervisor</h4><p>Reference it as <code>{"type": "uc_connection", "uc_connection": {"name": "github_mcp"}}</code>.</p></div></div>
+
+  <h2>Pre-Built System Connectors</h2>
+  <table>
+    <tr><th>Connector</th><th>Connection Name</th><th>What It Accesses</th></tr>
+    <tr><td>GitHub</td><td><code>system_ai_agent_github_mcp</code></td><td>Repos, Issues, PRs, Commits</td></tr>
+    <tr><td>Google Drive</td><td><code>system_ai_agent_google_drive</code></td><td>Files, Docs, Sheets</td></tr>
+    <tr><td>Atlassian</td><td><code>system_ai_agent_atlassian_mcp</code></td><td>Jira Issues, Confluence Pages</td></tr>
+    <tr><td>SharePoint</td><td><code>system_ai_agent_sharepoint</code></td><td>Files, Lists</td></tr>
+  </table>
+
+  <h2>Code Example</h2>
+  <div class="code-block">
+<span class="comment"># Connect to GitHub via U2M OAuth</span>
+response = client.responses.create(
+    model=<span class="string">"databricks-claude-sonnet-4-6"</span>,
+    input=[{<span class="string">"type"</span>: <span class="string">"message"</span>, <span class="string">"role"</span>: <span class="string">"user"</span>,
+            <span class="string">"content"</span>: <span class="string">"List my open PRs on the main repo"</span>}],
+    tools=[{
+        <span class="string">"type"</span>: <span class="string">"uc_connection"</span>,
+        <span class="string">"uc_connection"</span>: {<span class="string">"name"</span>: <span class="string">"system_ai_agent_github_mcp"</span>}
+    }]
+)
+<span class="comment"># User authenticates via OAuth on first use</span>
+<span class="comment"># All subsequent calls use their token automatically</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: Comparison ═══════════════════════ -->
+<div class="page" id="page-comparison">
+  <h1>Supervisor API vs Agent Bricks Supervisor Agent</h1>
+  <p class="subtitle">Two approaches to multi-agent orchestration - choose based on your customer's needs.</p>
+
+  <div class="two-col">
+    <div class="col-card">
+      <h3><span class="badge api">API-First</span> Supervisor API</h3>
+      <p>For <strong>developers</strong> building custom agent systems. Full model choice, API-first, nothing persisted.</p>
+      <div class="code-block" style="font-size:11px;">
+response = client.responses.create(
+    model=<span class="string">"your-choice"</span>,
+    tools=[...],
+    instructions=<span class="string">"..."</span>
+)
+      </div>
+    </div>
+    <div class="col-card highlight">
+      <h3><span class="badge ui">Low-Code</span> Agent Bricks Supervisor</h3>
+      <p>For <strong>analysts & business users</strong>. UI-driven, config persisted, model abstracted away.</p>
+      <p style="margin-top:8px; font-size:13px;">Create in Agent Bricks console > Add tools > Add examples & guidelines > Deploy.</p>
+    </div>
+  </div>
+
+  <h2>Feature Comparison</h2>
+  <table>
+    <tr><th>Feature</th><th>Supervisor API</th><th>Agent Bricks Supervisor</th></tr>
+    <tr><td><strong>Interface</strong></td><td>REST API / SDK</td><td>UI Console + API</td></tr>
+    <tr><td><strong>Model Choice</strong></td><td>You choose (Claude, GPT-5, etc.)</td><td>Databricks chooses (abstracted)</td></tr>
+    <tr><td><strong>Configuration</strong></td><td>In code (stateless)</td><td>Persisted (saved in platform)</td></tr>
+    <tr><td><strong>Quality Tuning</strong></td><td>Via <code>instructions</code> parameter</td><td>Examples + Guidelines UI</td></tr>
+    <tr><td><strong>Background Mode</strong></td><td>Yes (30 min max, poll for results)</td><td>No</td></tr>
+    <tr><td><strong>Tracing</strong></td><td>Unity Catalog traces</td><td>Built-in MLflow traces</td></tr>
+    <tr><td><strong>Pricing</strong></td><td>AI Gateway usage + tool costs</td><td>DBU per step (~$0.01-$0.44)</td></tr>
+    <tr><td><strong>Best For</strong></td><td>Custom apps, CI/CD pipelines, programmatic agents</td><td>Quick prototyping, business-user-facing agents</td></tr>
+  </table>
+
+  <div class="info-box orange">
+    <strong>Key Insight:</strong> Both share the same tool types now. The difference is in <em>how you build</em> - Supervisor API gives you full control via code, while Agent Bricks Supervisor gives you a managed experience. Over time, these are expected to converge.
+  </div>
+
+  <h2>When to Recommend Each</h2>
+  <div class="two-col">
+    <div class="col-card">
+      <h3>Use Supervisor API when:</h3>
+      <ul>
+        <li>Customer needs specific model choice</li>
+        <li>Building agents programmatically (CI/CD)</li>
+        <li>Need background/async execution</li>
+        <li>Embedding into existing apps</li>
+        <li>Want full control over orchestration</li>
+      </ul>
+    </div>
+    <div class="col-card">
+      <h3>Use Agent Bricks Supervisor when:</h3>
+      <ul>
+        <li>Quick prototyping / POC</li>
+        <li>Business users managing the agent</li>
+        <li>Need persisted config + examples</li>
+        <li>Want managed deployment</li>
+        <li>Don't need model choice flexibility</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ PAGE: Selling Points ═══════════════════════ -->
+<div class="page" id="page-selling-points">
+  <h1>Selling Points & Handling Objections</h1>
+  <p class="subtitle">SA field guide for positioning Supervisor API to customers.</p>
+
+  <h2>&#128640; Top Selling Points</h2>
+  <div class="info-box green">
+    <strong>1. Any Tool, Anywhere:</strong> Custom MCP servers, custom agents, UC functions, Genie, Knowledge Assistant, external services - all as first-class tools. No vendor lock-in on the tool layer.
+  </div>
+  <div class="info-box green">
+    <strong>2. Model Choice:</strong> Use Claude, GPT-5, or any model on Foundation Model API. Switch models without changing tools. A/B test models easily.
+  </div>
+  <div class="info-box green">
+    <strong>3. Enterprise Governance:</strong> All tool calls flow through AI Gateway - rate limits, guardrails, audit logging. UC governs data access. Per-user auth for external services.
+  </div>
+  <div class="info-box green">
+    <strong>4. Background Mode:</strong> Submit long-running agent tasks (up to 30 min) and poll for results. No other platform offers managed async agent execution.
+  </div>
+  <div class="info-box green">
+    <strong>5. Zero Boilerplate:</strong> One API call handles the entire agent loop - model calls, tool selection, execution, response synthesis. No LangChain/LlamaIndex framework needed.
+  </div>
+
+  <h2>&#9888; Common Objections & Responses</h2>
+  <table>
+    <tr><th>Objection</th><th>Response</th></tr>
+    <tr><td>"We already use LangChain/CrewAI"</td><td>Supervisor API doesn't replace your framework - it can <strong>orchestrate agents built with any framework</strong> via the App tool type. Deploy your LangChain agent as an App, register it as a tool.</td></tr>
+    <tr><td>"It's in Beta"</td><td>Beta on Databricks means production-ready for many customers. We're iterating fast - Agent Bricks shipped 2 agent types + 13 improvements in 2 months. Supervisor Agent is already GA.</td></tr>
+    <tr><td>"We need to run agents on AWS/Azure/GCP"</td><td>Databricks runs on all 3 clouds. External MCP with U2M auth connects to services anywhere. Custom Agent on Apps can proxy to Bedrock/Vertex/Foundry agents.</td></tr>
+    <tr><td>"What about cost?"</td><td>You only pay for AI Gateway usage + tool call costs. No per-step DBU charge. Compare: AWS Bedrock Agents charges per step + session. Azure AI Foundry charges per token + orchestration.</td></tr>
+    <tr><td>"We need observability"</td><td>Every agent decision traced to Unity Catalog. MLflow integration for evaluation. AI Gateway provides centralized monitoring across all models and tools.</td></tr>
+    <tr><td>"How is this different from OpenAI Responses API?"</td><td>Same API surface (OpenResponses compatible), but with <strong>Databricks-native tools</strong> (Genie, UC Functions, Knowledge Assistant), <strong>enterprise governance</strong> (AI Gateway), and <strong>data proximity</strong> (tools run next to your lakehouse).</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════════ PAGE: Live Demo ═══════════════════════ -->
+<div class="page" id="page-live-demo">
+  <h1>Live Supervisor Agent</h1>
+  <p class="subtitle">Chat with the supervisor that orchestrates all 3 tool types in real-time.</p>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+    <button class="btn btn-outline" onclick="runScenario('List all services and check metrics for any degraded ones.')">Health Check</button>
+    <button class="btn btn-outline" onclick="runScenario('The order-service is slow. Get metrics, classify priority, search runbooks, and create a ticket if P1/P2.')">Incident Investigation</button>
+    <button class="btn btn-outline" onclick="runScenario('Analyze incident trends, check reliability, and calculate SLA budget for 99.85% uptime vs 99.9% target (30 days, 15 elapsed).')">Analytics + SLA</button>
+    <button class="btn btn-outline" onclick="runScenario('URGENT: Checkout failures. Full incident response - list services, metrics, classify, search runbooks, trend analysis, ticket, stakeholder report.')">Full Response</button>
+  </div>
+
+  <div class="chat-container" id="chat-container"></div>
+  <div class="chat-input">
+    <input id="chat-input" placeholder="Ask the supervisor agent..." onkeydown="if(event.key==='Enter')sendChat()">
+    <button class="btn btn-primary" id="chat-send-btn" onclick="sendChat()">Send</button>
+  </div>
+</div>
+
+</main>
+
+<script>
+// ─── Navigation ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.sidebar-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    item.classList.add('active');
+    document.getElementById('page-' + item.dataset.page).classList.add('active');
+    document.querySelector('.main').scrollTop = 0;
+  });
+});
+
+// ─── Load Config ──────────────────────────────────────────────────────────────
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  document.getElementById('link-notebook-setup').href = cfg.notebook_setup || '#';
+  document.getElementById('link-notebook-demo').href = cfg.notebook_demo || '#';
+  if (document.getElementById('link-setup-nb'))
+    document.getElementById('link-setup-nb').href = cfg.notebook_setup || '#';
+}).catch(() => {});
+
+// ─── Tool Testing ─────────────────────────────────────────────────────────────
+async function testMcpTool() {
+  const tool = document.getElementById('mcp-tool-select').value;
+  const arg = document.getElementById('mcp-tool-arg').value;
+  const box = document.getElementById('mcp-result');
+  box.textContent = 'Running...'; box.classList.add('visible');
+  try {
+    const args = tool === 'list_services' ? {} :
+                 tool === 'search_knowledge_base' ? {query: arg} : {service_name: arg};
+    const r = await fetch('/api/test-tool', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool_type: 'mcp', tool_name: tool, arguments: args})});
+    const d = await r.json();
+    try { box.textContent = JSON.stringify(JSON.parse(d.result), null, 2); }
+    catch { box.textContent = d.result; }
+  } catch(e) { box.textContent = 'Error: ' + e.message; }
+}
+
+async function testAgent() {
+  const q = document.getElementById('agent-question').value;
+  const box = document.getElementById('agent-result');
+  box.textContent = 'Asking agent...'; box.classList.add('visible');
+  try {
+    const r = await fetch('/api/test-tool', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool_type: 'agent', tool_name: 'data_analyst', arguments: {question: q}})});
+    const d = await r.json();
+    try { box.textContent = JSON.stringify(JSON.parse(d.result.replace('Here is my analysis:\n\n', '')), null, 2); }
+    catch { box.textContent = d.result; }
+  } catch(e) { box.textContent = 'Error: ' + e.message; }
+}
+
+async function testUcFunction() {
+  const box = document.getElementById('uc-result');
+  box.textContent = 'Running SQL...'; box.classList.add('visible');
+  try {
+    const r = await fetch('/api/test-tool', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool_type: 'uc', tool_name: 'classify_priority', arguments: {
+        error_rate: parseFloat(document.getElementById('uc-error').value),
+        p99_latency_ms: parseFloat(document.getElementById('uc-latency').value),
+        affected_users: parseInt(document.getElementById('uc-users').value)
+      }})});
+    const d = await r.json();
+    box.textContent = d.result;
+  } catch(e) { box.textContent = 'Error: ' + e.message; }
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+function addMsg(role, text) {
+  const c = document.getElementById('chat-container');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  div.innerHTML = text.replace(/\n/g, '<br>');
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+function addToolCall(tc) {
+  const c = document.getElementById('chat-container');
+  const icons = {wrench: '&#128295;', robot: '&#129302;', database: '&#128202;'};
+  const div = document.createElement('div');
+  div.className = 'tool-call';
+  div.innerHTML = `<span class="tc-icon">${icons[tc.icon] || '&#10067;'}</span>
+    <div><span class="tc-type">${tc.type}</span><br><span class="tc-name">${tc.name}</span></div>`;
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  addMsg('user', msg);
+  document.getElementById('chat-send-btn').disabled = true;
+  addMsg('assistant', '<span class="spinner"></span> Thinking...');
+
+  try {
+    const r = await fetch('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg})});
+    const d = await r.json();
+    // Remove thinking msg
+    const msgs = document.querySelectorAll('.chat-msg.assistant');
+    msgs[msgs.length-1].remove();
+    // Show tool calls
+    (d.tool_calls || []).forEach(tc => addToolCall(tc));
+    // Show response
+    addMsg('assistant', d.response || 'No response');
+  } catch(e) {
+    const msgs = document.querySelectorAll('.chat-msg.assistant');
+    msgs[msgs.length-1].innerHTML = 'Error: ' + e.message;
+  }
+  document.getElementById('chat-send-btn').disabled = false;
+}
+
+function runScenario(prompt) {
+  document.getElementById('chat-input').value = prompt;
+  sendChat();
+}
+</script>
+</body>
+</html>

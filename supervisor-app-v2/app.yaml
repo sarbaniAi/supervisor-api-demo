@@ -1,0 +1,33 @@
+command:
+  - uvicorn
+  - server.app:app
+  - --host
+  - 0.0.0.0
+  - --port
+  - "8000"
+
+env:
+  - name: MCP_APP_URL
+    value: https://mcp-ops-tools-7474660536314099.aws.databricksapps.com
+  - name: AGENT_APP_URL
+    value: https://agent-data-analyst-7474660536314099.aws.databricksapps.com
+  - name: LLM_MODEL
+    value: databricks-claude-sonnet-4-6
+  - name: UC_CATALOG
+    value: classic_stable_yh3b2z_catalog
+  - name: UC_SCHEMA
+    value: supertvisor-api
+  - name: SQL_WAREHOUSE_ID
+    value: 25899ae5a5341c16
+  - name: WORKSPACE_URL
+    value: https://fevm-classic-stable-yh3b2z.cloud.databricks.com
+  - name: NOTEBOOK_SETUP_URL
+    value: https://fevm-classic-stable-yh3b2z.cloud.databricks.com/#workspace/Users/sarbani.maiti@databricks.com/supervisor-api-demo/01_setup_uc_functions
+  - name: NOTEBOOK_DEMO_URL
+    value: https://fevm-classic-stable-yh3b2z.cloud.databricks.com/#workspace/Users/sarbani.maiti@databricks.com/supervisor-api-demo/02_supervisor_api_demo
+
+resources:
+  - name: sql-warehouse
+    sql_warehouse:
+      id: 25899ae5a5341c16
+      permission: CAN_USE
