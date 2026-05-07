@@ -54,21 +54,21 @@ SUPERVISOR_TOOLS = [
     {
         "type": "uc_function",
         "uc_function": {
-            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.classify_priority",
+            "name": f"{UC_CATALOG}.{UC_SCHEMA}.classify_priority",
             "description": "Classifies incident priority (P1-P4) based on error rate percentage, P99 latency in milliseconds, and number of affected users."
         }
     },
     {
         "type": "uc_function",
         "uc_function": {
-            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.calculate_sla_budget",
+            "name": f"{UC_CATALOG}.{UC_SCHEMA}.calculate_sla_budget",
             "description": "Calculates remaining SLA error budget given current uptime, SLA target, period length, and days elapsed. Returns budget status and risk level."
         }
     },
     {
         "type": "uc_function",
         "uc_function": {
-            "name": f"{UC_CATALOG}.`{UC_SCHEMA}`.format_incident_summary",
+            "name": f"{UC_CATALOG}.{UC_SCHEMA}.format_incident_summary",
             "description": "Formats a professional incident summary report for stakeholder communication given service name, severity, error rate, latency, and description."
         }
     },
@@ -130,14 +130,14 @@ def execute_tool_direct(tool_type: str, tool_name: str, arguments: dict) -> str:
         elif tool_type == "uc":
             func = tool_name
             if func == "classify_priority":
-                sql = f"SELECT `{UC_CATALOG}`.`{UC_SCHEMA}`.classify_priority({arguments['error_rate']}, {arguments['p99_latency_ms']}, {arguments['affected_users']})"
+                sql = f"SELECT {UC_CATALOG}.{UC_SCHEMA}.classify_priority({arguments['error_rate']}, {arguments['p99_latency_ms']}, {arguments['affected_users']})"
             elif func == "calculate_sla_budget":
-                sql = f"SELECT `{UC_CATALOG}`.`{UC_SCHEMA}`.calculate_sla_budget({arguments['uptime_percent']}, {arguments['sla_target']}, {arguments['days_in_period']}, {arguments['days_elapsed']})"
+                sql = f"SELECT {UC_CATALOG}.{UC_SCHEMA}.calculate_sla_budget({arguments['uptime_percent']}, {arguments['sla_target']}, {arguments['days_in_period']}, {arguments['days_elapsed']})"
             elif func == "format_incident_summary":
                 svc = arguments['service_name'].replace("'", "''")
                 sev = arguments['severity'].replace("'", "''")
                 desc = arguments['description'].replace("'", "''")
-                sql = f"SELECT `{UC_CATALOG}`.`{UC_SCHEMA}`.format_incident_summary('{svc}', '{sev}', {arguments['error_rate']}, {arguments['latency_ms']}, '{desc}')"
+                sql = f"SELECT {UC_CATALOG}.{UC_SCHEMA}.format_incident_summary('{svc}', '{sev}', {arguments['error_rate']}, {arguments['latency_ms']}, '{desc}')"
             else:
                 return f"Unknown UC function: {func}"
 

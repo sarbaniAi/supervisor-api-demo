@@ -16,7 +16,7 @@ env:
   - name: UC_CATALOG
     value: classic_stable_yh3b2z_catalog
   - name: UC_SCHEMA
-    value: supertvisor-api
+    value: supervisor_api
   - name: SQL_WAREHOUSE_ID
     value: 25899ae5a5341c16
   - name: WORKSPACE_URL
